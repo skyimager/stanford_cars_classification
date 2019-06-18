@@ -1,0 +1,59 @@
+{
+    "name": "ResNet152-AutoAugment",
+    "n_gpu": 1,
+
+    "arch": {
+        "type": "ResNet152",
+        "args": {
+            "use_pretrained": true,
+            "num_classes": 196
+        }
+    },
+    "data_processing": {
+        "type": "CarsDataLoader",
+        "args":{
+            "mode": "train",
+            "data_dir": "data_processing/datasets/training/extracted/",
+            "metas": "data_processing/datasets/cars_metas/cars_train_annos.mat",
+            "resize_width": 299,
+            "resize_height": 299,
+            "batch_size": 16,
+            "shuffle": true,
+            "validation_split": 0.15,
+            "num_workers": 1,
+            "limit": null
+        }
+    },
+    "optimizer": {
+        "type": "SGD",
+        "args":{
+            "lr": 0.1,
+            "momentum": 0.9,
+            "weight_decay": 0.005,
+            "nesterov": true
+        }
+    },
+    "loss": "cross_entropy_loss",
+    "metrics": [
+        "accuracy", "top_k_accuracy"
+    ],
+    "lr_scheduler": {
+        "type": "CyclicLR",
+        "args": {
+            "base_lr": 1e-6,
+            "max_lr": 1e-5
+        }
+    },
+    "trainer": {
+        "epochs": 300,
+
+        "save_dir": "saved/",
+        "save_period": 1,
+        "verbosity": 2,
+        
+        "monitor": "max val_accuracy",
+        "early_stop": 40,
+        
+        "tensorboardX": true
+    }
+}
