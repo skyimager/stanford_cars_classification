@@ -1,60 +1,92 @@
-import argparse
-import collections
-import torch
-import data_processing.data_loaders as module_data
-import model.loss as module_loss
-import model.metric as module_metric
-import model.model as module_arch
-from parse_config import ConfigParser
-from trainer import Trainer
+
+import os, sys
+os.environ['TF_CPP_MIN_LOG_LEVEL']='3'
+sys.path.append(os.path.abspath('./src/networks'))
+
+import tensorflow as tf
+import keras.backend.tensorflow_backend as ktf
+def get_session():
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction= 0.8,
+                                allow_growth=True)
+    return tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+ktf.set_session(get_session())
+
+from config import retinanet as config
+from src import networks
+from src.training.csv_generator import create_generators
+
+from src.networks.retinanet import retinanet_bbox
+from src.utils.anchors import make_shapes_callback
+from src.training.callbacks.keras_callbacks import create_callbacks
+from src.networks.get_model import create_models
 
 
-def main(config):
-    logger = config.get_logger('train')
+if __name__ == "__main__":
 
-    # setup data_processing instances
-    data_loader = config.initialize('data_processing', module_data)
-    valid_data_loader = data_loader.split_validation()
+    # create object that stores backbone information
+    backbone = networks.backbone(config["backbone"])
 
-    # build model architecture, then print to console
-    model = config.initialize('arch', module_arch)
-    logger.info(model)
-
-    # get function handles of loss and metrics
-    loss = getattr(module_loss, config['loss'])
-    metrics = [getattr(module_metric, met) for met in config['metrics']]
-
-    # build optimizer, learning rate scheduler. delete every lines containing lr_scheduler for disabling scheduler
-    trainable_params = filter(lambda p: p.requires_grad, model.parameters())
-    optimizer = config.initialize('optimizer', torch.optim, trainable_params)
-
-    lr_scheduler = config.initialize('lr_scheduler', torch.optim.lr_scheduler, optimizer)
-
-    trainer = Trainer(model, loss, metrics, optimizer,
-                      config=config,
-                      data_loader=data_loader,
-                      valid_data_loader=valid_data_loader,
-                      lr_scheduler=lr_scheduler)
-
-    trainer.train()
+    # create the generators
+    train_generator, validation_generator = create_generators(config,
+                                                              backbone.preprocess_image)
 
 
-if __name__ == '__main__':
-    args = argparse.ArgumentParser(description='Cars Train')
-    args.add_argument('-p', '--phase', default='train', type=str,
-                        help='phase (default: train)')
-    args.add_argument('-c', '--config', default=None, type=str,
-                        help='config file path (default: None)')
-    args.add_argument('-r', '--resume', default=None, type=str,
-                        help='path to latest checkpoint (default: None)')
-    args.add_argument('-d', '--device', default=None, type=str,
-                        help='indices of GPUs to enable (default: all)')
+    # create the model
+    if config["resume-training"]:
+        print('Loading model, this may take a second...')
+        model = networks.load_model(config["snapshot"], backbone_name=config["backbone"])
+        training_model   = model
+        anchor_params    = None
+        prediction_model = retinanet_bbox(model=model, anchor_params=anchor_params)
 
-    # custom cli options to modify configuration from default values given in json file.
-    CustomArgs = collections.namedtuple('CustomArgs', 'flags type target')
-    options = [
-        CustomArgs(['--lr', '--learning_rate'], type=float, target=('optimizer', 'args', 'lr')),
-        CustomArgs(['--bs', '--batch_size'], type=int, target=('data_processing', 'args', 'batch_size'))
-    ]
-    config = ConfigParser(args, options)
-    main(config)
+    else:
+        weights = config["weights"]
+
+        # default to imagenet if nothing else is specified
+        if weights is None and config["imagenet_weights"]:
+            weights = backbone.download_imagenet()
+
+        print('Creating model, this may take a second...')
+        model, training_model, prediction_model = create_models(backbone_retinanet=backbone.retinanet,
+                                                                num_classes=train_generator.num_classes(),
+                                                                weights=weights,
+                                                                multi_gpu=config["multi-gpu"],
+                                                                freeze_backbone=config["freeze-backbone"],
+                                                                lr=config["lr"])
+
+    # print model summary
+    print(model.summary())
+
+    # this lets the generator compute backbone layer shapes using the actual backbone model
+    if 'vgg' in config["backbone"] or 'densenet' in config["backbone"]:
+        train_generator.compute_shapes = make_shapes_callback(model)
+        if validation_generator:
+            validation_generator.compute_shapes = train_generator.compute_shapes
+
+    # create the callbacks
+    callbacks = create_callbacks(
+        model,
+        training_model,
+        prediction_model,
+        validation_generator,
+        config,
+    )
+
+    # Use multiprocessing if workers > 0
+    if config["workers"] > 0:
+        use_multiprocessing = True
+    else:
+        use_multiprocessing = False
+
+    if not config["compute-val-loss"]:
+        validation_generator = None
+
+    training_model.fit_generator(generator=train_generator,
+                                 steps_per_epoch=config["steps"],
+                                 epochs=config["epochs"],
+                                 verbose=1,
+                                 callbacks=callbacks,
+                                 workers=config["workers"],
+                                 use_multiprocessing=use_multiprocessing,
+                                 max_queue_size=config["max-queue-size"],
+                                 validation_data=validation_generator)
