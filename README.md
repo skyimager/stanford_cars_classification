@@ -1,7 +1,7 @@
 # Stanford Cars Classification Challenge by Grab
 AI for SEA Cars Classification Challenge
 
-- [Project Statement](#proj-stat)
+- [Problem Statement](#proj-stat)
 - [Project Structure](#proj-struc)
 - [Experimentation](#exp)
 - [Preparing Dataset](#preparing-dataset)
@@ -48,7 +48,14 @@ https://ai.stanford.edu/~jkrause/cars/car_dataset.html
 
 <a name="exp"></a>
 ## 3. Experimentation
+I tried two approaches here:
 
+**Approach 1(two stage approach):**
+First use a car detection model to get the car bounding box from the image. Subsequently crop the car from the image and then run an image classification algorithm on the image.
+This method was doing feature extraction twice and so the total throughput of this operation was high.
+
+**Approach 2(one stage approach):**
+Car classification by detection first using one-stage detectors like retinanet. With this approach my accuracy was comparable to the two stage approach however my throughput time as reduce to 0.30secs which was very impressive.
 
 <a name="preparing-dataset"></a>
 ## 4. Preparing dataset
@@ -136,7 +143,7 @@ The entire training configuration including the dataset path, hyper-parameters a
 ## 6. Evaluation
 For evaluation, the final model can be obtained from [here](https://drive.google.com/file/d/1IJLoxTYMo0q8xzC_0zI8JpMccN3nbZyf/view?usp=sharing)
 
-The same has to be kept inside the `inferencec` folder in root.
+The same has to be kept inside the `inference` folder in root.
 
 For evaluation the model can be run using the notebook [here](./notebooks/inference_retinanet.ipynb)
 
