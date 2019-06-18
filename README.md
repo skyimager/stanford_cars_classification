@@ -134,10 +134,11 @@ The entire training configuration including the dataset path, hyper-parameters a
 
 <a name="eval"></a>
 ## 6. Evaluation
-For evaluation, the final model can be obtained [here](./)
+For evaluation, the final model can be obtained from [here](https://drive.google.com/file/d/1IJLoxTYMo0q8xzC_0zI8JpMccN3nbZyf/view?usp=sharing)
+
 The same has to be kept inside the `inferencec` folder in root.
 
-For evaluation the model can be run using the notebook [here](./)
+For evaluation the model can be run using the notebook [here](./notebooks/inference_retinanet.ipynb)
 
 <a name="to-do"></a>
 ## 7. To-Do
